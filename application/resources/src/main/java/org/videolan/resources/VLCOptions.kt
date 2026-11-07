@@ -239,6 +239,21 @@ object VLCOptions {
             if (soundFontFile.exists()) {
                 options.add("--soundfont=${soundFontFile.path}")
             }
+
+            // Custom subtitle font: Kalpurush (copied from assets on first use)
+            val fontFile = File(context.getDir("fonts", Context.MODE_PRIVATE), "Kalpurush.ttf")
+            if (!fontFile.exists()) {
+                try {
+                    context.assets.open("Kalpurush.ttf").use { input ->
+                        fontFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                } catch (e: Exception) {
+                    fontFile.delete()
+                    Log.w(TAG, "Kalpurush font copy failed", e)
+                }
+            }
+            if (fontFile.exists()) options.add("--freetype-font=${fontFile.path}")
+
             options.add("--preferred-resolution=${pref.getString(KEY_PREFERRED_RESOLUTION, "-1")!!}")
             if (BuildConfig.DEBUG) Log.d(this::class.java.simpleName, "VLC Options: ${options.joinToString(" ")}")
             return options
