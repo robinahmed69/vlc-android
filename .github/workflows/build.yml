@@ -7,6 +7,9 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
+    env:
+      ANDROID_SDK: /usr/local/lib/android/sdk
+      ANDROID_NDK: /usr/local/lib/android/sdk/ndk/21.4.7075529
     steps:
       - uses: actions/checkout@v4
         with:
@@ -17,20 +20,19 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
-
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y automake ant autopoint cmake build-essential libtool \
-            patch pkg-config protobuf-compiler ragel subversion unzip git openjdk-17-jre-headless \
+            patch pkg-config protobuf-compiler ragel subversion unzip git \
             wget python3
 
       - name: Install NDK
         run: |
-          yes | sdkmanager "ndk;21.4.7075529" "platforms;android-36" "build-tools;36.0.0"
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "android.ndkPath=$ANDROID_HOME/ndk/21.4.7075529" >> local.properties
+          yes | $ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529" "platforms;android-36" "build-tools;36.0.0"
+          echo "sdk.dir=$ANDROID_SDK" > local.properties
+          echo "android.ndkPath=$ANDROID_NDK" >> local.properties
 
       - name: Build
         run: |
