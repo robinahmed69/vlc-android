@@ -34,6 +34,11 @@ jobs:
           echo "sdk.dir=$ANDROID_SDK" > local.properties
           echo "android.ndkPath=$ANDROID_NDK" >> local.properties
 
+      - name: Set git identity
+        run: |
+          git config --global user.email "wave@example.com"
+          git config --global user.name "Wave Builder"
+
       - name: Build
         run: |
           chmod +x buildsystem/compile.sh
