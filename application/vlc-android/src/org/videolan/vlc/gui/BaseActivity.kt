@@ -202,6 +202,10 @@ abstract class BaseActivity : AppCompatActivity() {
         if (displayTitle) {
             findViewById<View>(R.id.toolbar_icon).setGone()
             findViewById<View>(R.id.toolbar_vlc_title).setGone()
+            findViewById<View>(R.id.toolbar_modified_by)?.setGone()
+        }
+        findViewById<View>(R.id.toolbar_modified_by)?.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.facebook.com/vetkimasss")))
         }
     }
 
