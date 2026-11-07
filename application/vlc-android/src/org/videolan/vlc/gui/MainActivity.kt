@@ -312,8 +312,9 @@ class MainActivity : ContentActivity(),
 
     private fun updateIncognitoModeIcon() {
         val incognito = Settings.getInstance (this).getBoolean(KEY_INCOGNITO, false)
-        toolbarIcon.setImageDrawable(ContextCompat.getDrawable(this, if (incognito) R.drawable.ic_incognito else if (BuildConfig.DEBUG && BuildConfig.VLC_MAJOR_VERSION == 4) R.drawable.ic_icon_vlc4 else R.drawable.ic_icon))
-
+        // Wave icon replaces the VLC cone; incognito icon is shown only in incognito mode
+        toolbarIcon.setImageDrawable(ContextCompat.getDrawable(this, if (incognito) R.drawable.ic_incognito else R.drawable.ic_wave))
+        toolbarIcon.visibility = View.VISIBLE
     }
 
     override fun onMenuItemActionExpand(item: MenuItem): Boolean {
