@@ -53,14 +53,19 @@
             app:useCompatPadding="true"
             app:layout_dodgeInsetEdges="bottom"
             app:srcCompat="@drawable/ic_fab_add"
-            android:tint="@color/grey50"
+            app:tint="@null"
+            app:backgroundTint="@android:color/transparent"
+            app:elevation="0dp"
+            app:pressedTranslationZ="0dp"
+            app:fabCustomSize="64dp"
+            app:maxImageSize="64dp"
             android:visibility="invisible"
             app:borderWidth="0dp"
             app:layout_anchor="@+id/navigation"
             app:layout_anchorGravity="top|end"
             android:layout_gravity="top|end"
             app:layout_behavior="org.videolan.vlc.gui.helpers.FloatingActionButtonBehavior"
-            app:rippleColor="@color/orange50" />
+            app:rippleColor="@android:color/transparent" />
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
             android:id="@+id/navigation"
@@ -84,6 +89,3 @@
             android:layout_height="match_parent"
             android:layout_width="match_parent" />
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
-
-
-
