@@ -730,6 +730,19 @@ class AudioPlayer : Fragment(), PlaylistAdapter.IPlayer, TextWatcher, IAudioPlay
         playlistModel.play(playlistModel.getPlaylistPosition(position, item))
     }
 
+    /**
+     * Small bounce animation + haptic feedback on control buttons
+     */
+    private fun bounce(view: View?) {
+        view ?: return
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        view.animate().cancel()
+        view.scaleX = 0.85f
+        view.scaleY = 0.85f
+        view.animate().scaleX(1f).scaleY(1f).setDuration(220)
+                .setInterpolator(android.view.animation.OvershootInterpolator(3f)).start()
+    }
+
     fun onTimeLabelClick(@Suppress("UNUSED_PARAMETER") view: View) {
         showRemainingTime = !showRemainingTime
         Settings.getInstance(requireContext()).edit().putBoolean(SHOW_REMAINING_TIME, showRemainingTime).apply()
@@ -769,6 +782,7 @@ class AudioPlayer : Fragment(), PlaylistAdapter.IPlayer, TextWatcher, IAudioPlay
     }
 
     fun onPlayPauseClick(@Suppress("UNUSED_PARAMETER") view: View?) {
+        bounce(view)
         if (playlistModel.service?.isPausable == false) {
             UiTools.snackerConfirm(requireActivity(), getString(R.string.stop_unpaubale), true) {
                 playlistModel.stop()
@@ -786,14 +800,17 @@ class AudioPlayer : Fragment(), PlaylistAdapter.IPlayer, TextWatcher, IAudioPlay
     }
 
     fun onNextClick(@Suppress("UNUSED_PARAMETER") view: View?) {
+        bounce(view)
         if (!playlistModel.next()) UiTools.snacker(requireActivity(), R.string.lastsong, true)
     }
 
     fun onPreviousClick(@Suppress("UNUSED_PARAMETER") view: View?) {
+        bounce(view)
         if (!playlistModel.previous()) UiTools.snacker(requireActivity(),  R.string.firstsong)
     }
 
     fun onRepeatClick(@Suppress("UNUSED_PARAMETER") view: View) {
+        bounce(view)
         playlistModel.repeatType = when (playlistModel.repeatType) {
             PlaybackStateCompat.REPEAT_MODE_NONE -> PlaybackStateCompat.REPEAT_MODE_ALL
             PlaybackStateCompat.REPEAT_MODE_ALL -> PlaybackStateCompat.REPEAT_MODE_ONE
@@ -808,6 +825,7 @@ class AudioPlayer : Fragment(), PlaylistAdapter.IPlayer, TextWatcher, IAudioPlay
     }
 
     fun onShuffleClick(@Suppress("UNUSED_PARAMETER") view: View) {
+        bounce(view)
         playlistModel.shuffle()
         updateShuffleMode()
     }
