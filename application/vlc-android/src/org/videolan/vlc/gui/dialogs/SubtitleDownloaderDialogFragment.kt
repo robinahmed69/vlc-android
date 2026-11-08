@@ -36,9 +36,16 @@ import org.videolan.vlc.databinding.SubtitleDownloaderDialogBinding
 import org.videolan.vlc.gui.helpers.UiTools
 import org.videolan.vlc.gui.helpers.UiTools.deleteSubtitleDialog
 import org.videolan.vlc.gui.view.OnItemSelectListener
+import org.videolan.vlc.repository.ExternalSubRepository
+import org.videolan.vlc.util.SUBSOURCE_API_KEY
+import org.videolan.vlc.util.SubSource
 import org.videolan.vlc.util.VLCDownloadManager
 import org.videolan.vlc.util.openLinkIfPossible
 import org.videolan.vlc.viewmodels.SubtitlesModel
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 private const val MEDIA_PATHS = "MEDIA_PATHS"
 private const val MEDIA_NAMES = "MEDIA_NAMES"
@@ -71,6 +78,9 @@ class SubtitleDownloaderDialogFragment : VLCBottomSheetDialogFragment() {
         for (subtitleEvent in channel) if (isActive) when (subtitleEvent) {
             is SubtitleClick -> when (subtitleEvent.item.state) {
                 State.NotDownloaded -> {
+                    if (SubSource.isSubSourceItem(subtitleEvent.item)) {
+                        downloadSubSource(subtitleEvent.item)
+                    } else {
                     var downloadAvailable = true
                     withContext(Dispatchers.IO) {
                         Log.i("SubtitleDownload", "Launching download for ${subtitleEvent.item.idSubtitle}")
@@ -98,6 +108,7 @@ class SubtitleDownloaderDialogFragment : VLCBottomSheetDialogFragment() {
                         }
                     }
                     if (downloadAvailable) VLCDownloadManager.download(requireActivity(), subtitleEvent.item, true)
+                    }
                 }
                 State.Downloaded -> deleteSubtitleDialog(requireActivity(), DialogInterface.OnClickListener { _, _ ->
                     subtitleEvent.item.mediaUri.path?.let { viewModel.deleteSubtitle(it, subtitleEvent.item.idSubtitle) }
@@ -118,6 +129,51 @@ class SubtitleDownloaderDialogFragment : VLCBottomSheetDialogFragment() {
                 toast.show()
             }
         } else channel.close()
+    }
+
+    /**
+     * Downloads a SubSource subtitle (zip), extracts it and registers it in the downloaded subtitles database.
+     */
+    private suspend fun downloadSubSource(item: SubtitleItem) {
+        val ctx = requireContext().applicationContext
+        val repo = ExternalSubRepository.getInstance(ctx)
+        repo.addDownloadingItem(item.fileId, item)
+        var savedPath: String? = null
+        withContext(Dispatchers.IO) {
+            try {
+                val dir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "subtitles")
+                dir.mkdirs()
+                val zipFile = File(ctx.cacheDir, "${item.idSubtitle}.zip")
+                val conn = URL(item.zipDownloadLink).openConnection() as HttpURLConnection
+                try {
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 30000
+                    conn.setRequestProperty("X-API-Key", SUBSOURCE_API_KEY)
+                    if (conn.responseCode == 200) {
+                        conn.inputStream.use { input -> FileOutputStream(zipFile).use { input.copyTo(it) } }
+                    } else {
+                        Log.w("SubSource", "Download HTTP ${conn.responseCode}")
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+                if (zipFile.exists()) {
+                    savedPath = SubSource.extractSubtitle(zipFile.absolutePath, dir, item.idSubtitle)
+                    zipFile.delete()
+                }
+            } catch (e: Exception) {
+                Log.w("SubSource", "Download failed: ${e.message}", e)
+            }
+        }
+        repo.removeDownloadingItem(item.fileId)
+        val path = savedPath
+        val mediaPath = item.mediaUri.path
+        if (path != null && mediaPath != null) {
+            repo.saveDownloadedSubtitle(item.idSubtitle, path, mediaPath, item.subLanguageID, item.movieReleaseName, item.hearingImpaired)
+        } else {
+            item.downloadError = true
+            downloadAdapter.notifyItemChanged(downloadAdapter.dataset?.indexOf(item) ?: 0)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
