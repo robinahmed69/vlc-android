@@ -38,6 +38,7 @@ import org.videolan.vlc.gui.helpers.UiTools.deleteSubtitleDialog
 import org.videolan.vlc.gui.view.OnItemSelectListener
 import org.videolan.vlc.repository.ExternalSubRepository
 import org.videolan.vlc.util.SUBSOURCE_API_KEY
+import org.videolan.vlc.util.SUBSOURCE_USER_AGENT
 import org.videolan.vlc.util.SubSource
 import org.videolan.vlc.util.VLCDownloadManager
 import org.videolan.vlc.util.openLinkIfPossible
@@ -132,36 +133,65 @@ class SubtitleDownloaderDialogFragment : VLCBottomSheetDialogFragment() {
     }
 
     /**
-     * Downloads a SubSource subtitle (zip), extracts it and registers it in the downloaded subtitles database.
+     * Downloads a SubSource subtitle (zip or raw file), extracts it and registers it in the downloaded subtitles database.
      */
     private suspend fun downloadSubSource(item: SubtitleItem) {
         val ctx = requireContext().applicationContext
         val repo = ExternalSubRepository.getInstance(ctx)
         repo.addDownloadingItem(item.fileId, item)
         var savedPath: String? = null
+        var errorMessage: String? = null
         withContext(Dispatchers.IO) {
             try {
                 val dir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "subtitles")
                 dir.mkdirs()
                 val zipFile = File(ctx.cacheDir, "${item.idSubtitle}.zip")
+                // remove leftovers from a previous failed attempt
+                if (zipFile.exists()) zipFile.delete()
+
                 val conn = URL(item.zipDownloadLink).openConnection() as HttpURLConnection
                 try {
-                    conn.connectTimeout = 10000
+                    conn.connectTimeout = 15000
                     conn.readTimeout = 30000
+                    conn.instanceFollowRedirects = true
                     conn.setRequestProperty("X-API-Key", SUBSOURCE_API_KEY)
-                    if (conn.responseCode == 200) {
+                    conn.setRequestProperty("User-Agent", SUBSOURCE_USER_AGENT)
+                    conn.setRequestProperty("Accept", "*/*")
+                    val code = conn.responseCode
+                    if (code == 200) {
                         conn.inputStream.use { input -> FileOutputStream(zipFile).use { input.copyTo(it) } }
                     } else {
-                        Log.w("SubSource", "Download HTTP ${conn.responseCode}")
+                        val err = try {
+                            conn.errorStream?.bufferedReader()?.use { it.readText().take(300) }
+                        } catch (e: Exception) {
+                            null
+                        }
+                        errorMessage = "HTTP $code ${err.orEmpty()}"
+                        Log.w("SubSource", "Download HTTP $code: $err")
                     }
                 } finally {
                     conn.disconnect()
                 }
-                if (zipFile.exists()) {
-                    savedPath = SubSource.extractSubtitle(zipFile.absolutePath, dir, item.idSubtitle)
+
+                if (zipFile.exists() && zipFile.length() > 0) {
+                    // Check zip magic bytes ("PK"). If it is not a zip, treat it as a raw subtitle file.
+                    val head = ByteArray(2)
+                    val read = zipFile.inputStream().use { it.read(head) }
+                    val isZip = read == 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()
+                    savedPath = if (isZip) {
+                        SubSource.extractSubtitle(zipFile.absolutePath, dir, item.idSubtitle)
+                    } else {
+                        val out = File(dir, "${item.idSubtitle}.srt")
+                        zipFile.copyTo(out, overwrite = true)
+                        out.absolutePath
+                    }
+                    if (savedPath == null) errorMessage = "No subtitle file found in the zip"
                     zipFile.delete()
+                } else if (errorMessage == null) {
+                    errorMessage = "Empty response"
                 }
             } catch (e: Exception) {
+                errorMessage = e.message ?: e.javaClass.simpleName
                 Log.w("SubSource", "Download failed: ${e.message}", e)
             }
         }
@@ -173,6 +203,8 @@ class SubtitleDownloaderDialogFragment : VLCBottomSheetDialogFragment() {
         } else {
             item.downloadError = true
             downloadAdapter.notifyItemChanged(downloadAdapter.dataset?.indexOf(item) ?: 0)
+            // Show the real reason on screen so it is easy to debug
+            Toast.makeText(ctx, "SubSource: ${errorMessage ?: "download failed"}", Toast.LENGTH_LONG).show()
         }
     }
 
