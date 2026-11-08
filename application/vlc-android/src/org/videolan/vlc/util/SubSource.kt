@@ -14,7 +14,11 @@ import java.net.URLEncoder
 import java.util.zip.ZipInputStream
 
 // SubSource API Key
+// NOTE: this key was pasted into a public repo. Revoke it on SubSource and create a new one.
 const val SUBSOURCE_API_KEY = "sk_a19a276c61b62f24a483e49b3503dbaa797dfda9eea0e908081846d15019bfcb"
+
+// A browser-like User-Agent. The default Java/Dalvik one is often blocked (HTTP 403) by Cloudflare.
+const val SUBSOURCE_USER_AGENT = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
 
 const val SUBSOURCE_ID_PREFIX = "ss_"
 private const val SUBSOURCE_BASE = "https://api.subsource.net/api/v1"
@@ -49,12 +53,20 @@ object SubSource {
         val conn = URL("$SUBSOURCE_BASE$path").openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "GET"
-            conn.connectTimeout = 8000
-            conn.readTimeout = 10000
+            conn.connectTimeout = 10000
+            conn.readTimeout = 15000
+            conn.instanceFollowRedirects = true
             conn.setRequestProperty("X-API-Key", SUBSOURCE_API_KEY)
+            conn.setRequestProperty("User-Agent", SUBSOURCE_USER_AGENT)
             conn.setRequestProperty("Accept", "application/json")
-            if (conn.responseCode != 200) {
-                Log.w(SS_TAG, "HTTP ${conn.responseCode} for $path")
+            val code = conn.responseCode
+            if (code != 200) {
+                val err = try {
+                    conn.errorStream?.bufferedReader()?.use { it.readText().take(300) }
+                } catch (e: Exception) {
+                    null
+                }
+                Log.w(SS_TAG, "HTTP $code for $path: $err")
                 null
             } else {
                 JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
