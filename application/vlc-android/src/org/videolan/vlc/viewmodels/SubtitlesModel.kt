@@ -233,38 +233,39 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
         subsourceLiveData.postValue(listOf())
 
         searchJob = viewModelScope.launch {
+            var subs: List<Data> = emptyList()
+            var osError: Exception? = null
             try {
-                val subs = if (byFile) {
-                    withContext(coroutineContextProvider.IO) {
-                        val videoFile = File(mediaUri.path)
-                        if (videoFile.exists()) {
-                            val hash = FileUtils.computeHash(videoFile)
-                            val hashSubs = getSubtitleByHash(hash, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data
-                            // No result for hash. Falling back to name search
-                            if (hashSubs.isEmpty()) getSubtitleByName(videoFile.name, null, null, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data else hashSubs
-                        } else {
-                            getSubtitleByName(name, null, null, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data
+                // 1. OpenSubtitles (own try/catch: a failure here must NOT stop the SubSource search)
+                try {
+                    subs = if (byFile) {
+                        withContext(coroutineContextProvider.IO) {
+                            val videoFile = File(mediaUri.path)
+                            if (videoFile.exists()) {
+                                val hash = FileUtils.computeHash(videoFile)
+                                val hashSubs = getSubtitleByHash(hash, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data
+                                // No result for hash. Falling back to name search
+                                if (hashSubs.isEmpty()) getSubtitleByName(videoFile.name, null, null, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data else hashSubs
+                            } else {
+                                getSubtitleByName(name, null, null, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data
+                            }
                         }
-
+                    } else {
+                        observableSearchName.get()?.let {
+                            val episode = observableSearchEpisode.get()?.toIntOrNull()
+                            val season = observableSearchSeason.get()?.toIntOrNull()
+                            getSubtitleByName(it, episode, season, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data
+                        } ?: listOf()
                     }
-                } else {
-                    observableSearchName.get()?.let {
-                        val episode = try {
-                            observableSearchEpisode.get()?.toIntOrNull()
-                        } catch (e: NumberFormatException) {
-                            null
-                        }
-                        val season = try {
-                            observableSearchSeason.get()?.toIntOrNull()
-                        } catch (e: NumberFormatException) {
-                            null
-                        }
-                        getSubtitleByName(it, episode, season, observableSearchLanguage.get(), observableSearchHearingImpaired.get() == true).data
-                    } ?: listOf()
+                    if (isActive) apiResultLiveData.postValue(subs)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("SubtitlesModel", "OpenSubtitles failed: ${e.message}", e)
+                    osError = e
                 }
-                if (isActive) apiResultLiveData.postValue(subs)
 
-                // SubSource (Bengali) search. Errors here must never break the normal search.
+                // 2. SubSource (Bengali) search. Always runs, even if OpenSubtitles failed.
                 val ssName = if (byFile) {
                     File(mediaUri.path ?: "").takeIf { it.exists() }?.name ?: name
                 } else {
@@ -272,25 +273,28 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
                 }
                 val ssItems = try {
                     withContext(coroutineContextProvider.IO) { SubSource.searchBengali(mediaUri, ssName) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w("SubtitlesModel", "SubSource search failed: ${e.message}", e)
                     emptyList()
                 }
                 if (isActive) subsourceLiveData.postValue(ssItems)
 
+                // 3. Message / error state
                 if (subs.isEmpty() && ssItems.isEmpty()) {
-                    observableMessage.set(getContext().getString(R.string.no_result))
+                    observableError.set(osError != null)
+                    observableMessage.set(
+                        when {
+                            osError is NoConnectivityException -> getContext().getString(R.string.no_internet_connection)
+                            osError != null -> getContext().getString(R.string.open_subs_download_error)
+                            else -> getContext().getString(R.string.no_result)
+                        }
+                    )
                 } else {
+                    observableError.set(false)
                     observableMessage.set("")
                 }
-                observableError.set(false)
-            } catch (e: Exception) {
-                Log.e("SubtitlesModel", e.message, e)
-                observableError.set(true)
-                if (e is NoConnectivityException)
-                    observableMessage.set(getContext().getString(R.string.no_internet_connection))
-                else
-                    observableMessage.set(getContext().getString(R.string.open_subs_download_error))
             } finally {
                 isApiLoading.postValue(false)
             }
