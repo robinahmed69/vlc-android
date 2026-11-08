@@ -41,6 +41,7 @@ import org.videolan.vlc.R
 import org.videolan.vlc.gui.dialogs.State
 import org.videolan.vlc.gui.dialogs.SubtitleItem
 import org.videolan.vlc.repository.ExternalSubRepository
+import org.videolan.vlc.util.SubSource
 import org.videolan.vlc.util.TextUtils
 import java.io.File
 import java.util.Locale
@@ -91,6 +92,7 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
         getApplication<Application>().getContextWithLocale(AppContextProvider.locale)
 
     private val apiResultLiveData: MutableLiveData<List<Data>> = MutableLiveData()
+    private val subsourceLiveData: MutableLiveData<List<SubtitleItem>> = MutableLiveData()
     private val downloadedLiveData = ExternalSubRepository.getInstance(context).getDownloadedSubtitles(mediaUri).map { list ->
         list.map { SubtitleItem(it.idSubtitle, -1, mediaUri, it.subLanguageID, it.movieReleaseName, State.Downloaded, "", it.hearingImpaired, 0F, 0) }
     }
@@ -134,6 +136,12 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
 
             }
 
+            addSource(subsourceLiveData) {
+                viewModelScope.launch {
+                    value = updateListState(apiResultLiveData.value, history.value)
+                }
+            }
+
             addSource(history) {
                 viewModelScope.launch {
                     value = updateListState(apiResultLiveData.value, it)
@@ -148,6 +156,11 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
 
     private suspend fun updateListState(apiResultLiveData: List<Data>?, history: List<SubtitleItem>?): MutableList<SubtitleItem> = withContext(coroutineContextProvider.Default) {
         val list = mutableListOf<SubtitleItem>()
+        // SubSource (Bengali) results first
+        subsourceLiveData.value?.forEach { ss ->
+            val existSs = history?.find { it.idSubtitle == ss.idSubtitle }
+            list.add(ss.copy(state = existSs?.state ?: State.NotDownloaded))
+        }
         apiResultLiveData?.forEach { openSubtitle ->
             val exist = history?.find { it.idSubtitle == openSubtitle.attributes.subtitleId }
             val state = exist?.state ?: State.NotDownloaded
@@ -217,6 +230,7 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
         observableMessage.set("")
         observableError.set(false)
         apiResultLiveData.postValue(listOf())
+        subsourceLiveData.postValue(listOf())
 
         searchJob = viewModelScope.launch {
             try {
@@ -249,7 +263,22 @@ class SubtitlesModel(context: Context, private val mediaUri: Uri, private val na
                     } ?: listOf()
                 }
                 if (isActive) apiResultLiveData.postValue(subs)
-                if (subs.isEmpty()) {
+
+                // SubSource (Bengali) search. Errors here must never break the normal search.
+                val ssName = if (byFile) {
+                    File(mediaUri.path ?: "").takeIf { it.exists() }?.name ?: name
+                } else {
+                    observableSearchName.get().takeUnless { it.isNullOrBlank() } ?: name
+                }
+                val ssItems = try {
+                    withContext(coroutineContextProvider.IO) { SubSource.searchBengali(mediaUri, ssName) }
+                } catch (e: Exception) {
+                    Log.w("SubtitlesModel", "SubSource search failed: ${e.message}", e)
+                    emptyList()
+                }
+                if (isActive) subsourceLiveData.postValue(ssItems)
+
+                if (subs.isEmpty() && ssItems.isEmpty()) {
                     observableMessage.set(getContext().getString(R.string.no_result))
                 } else {
                     observableMessage.set("")
