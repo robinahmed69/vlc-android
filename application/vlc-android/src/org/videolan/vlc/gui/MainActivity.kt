@@ -24,20 +24,26 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
 import androidx.appcompat.view.ActionMode
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,6 +100,8 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "VLC/MainActivity"
+private const val THEME_MENU_ID = 9101
+private const val KEY_WAVE_THEME = "wave_theme_index"
 
 class MainActivity : ContentActivity(),
         INavigator by Navigator()
@@ -103,6 +111,7 @@ class MainActivity : ContentActivity(),
     private lateinit var mediaLibrary: Medialibrary
     private var scanNeeded = false
     private lateinit var toolbarIcon: ImageView
+    private var themeBg: ImageView? = null
 
     override fun getSnackAnchorView(overAudioPlayer:Boolean): View? {
         val view = super.getSnackAnchorView(overAudioPlayer)
@@ -116,7 +125,9 @@ class MainActivity : ContentActivity(),
         /*** Start initializing the UI  */
         setContentView(R.layout.main)
         initAudioPlayerContainerActivity()
+        registerThemeCallbacks()
         setupNavigation(savedInstanceState)
+        applyAppTheme()
 
         /* Set up the action bar */
         prepareActionBar()
@@ -280,6 +291,9 @@ class MainActivity : ContentActivity(),
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
         menu?.findItem(R.id.ml_menu_refresh)?.isVisible = Permissions.canReadStorage(this)
         menu?.findItem(R.id.incognito_mode)?.isChecked = Settings.getInstance(this).getBoolean(KEY_INCOGNITO, false)
+        if (menu != null && menu.findItem(THEME_MENU_ID) == null) {
+            menu.add(Menu.NONE, THEME_MENU_ID, Menu.NONE, "Theme")
+        }
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -303,10 +317,75 @@ class MainActivity : ContentActivity(),
                 }
                 true
             }
+            THEME_MENU_ID -> {
+                showThemeDialog()
+                true
+            }
             android.R.id.home ->
                 // Slide down the audio player or toggle the sidebar
                 slideDownAudioPlayer()
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    /**
+     * Theme feature: picks a background picture for the main screens
+     */
+    private fun showThemeDialog() {
+        val names = arrayOf("Default", "Aurora", "Glass Orbs", "Neon Wave")
+        val current = settings.getInt(KEY_WAVE_THEME, 0)
+        AlertDialog.Builder(this)
+            .setTitle("Theme")
+            .setSingleChoiceItems(names, current) { dialog, which ->
+                settings.putSingle(KEY_WAVE_THEME, which)
+                applyAppTheme()
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun registerThemeCallbacks() {
+        supportFragmentManager.registerFragmentLifecycleCallbacks(object : FragmentManager.FragmentLifecycleCallbacks() {
+            override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
+                if (settings.getInt(KEY_WAVE_THEME, 0) != 0) makeBackgroundsTransparent(v, 0)
+            }
+        }, true)
+    }
+
+    private fun applyAppTheme() {
+        val index = settings.getInt(KEY_WAVE_THEME, 0)
+        val coordinator = findViewById<ViewGroup>(R.id.coordinator) ?: return
+        if (themeBg == null) {
+            themeBg = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                layoutParams = CoordinatorLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            coordinator.addView(themeBg, 0)
+        }
+        val resId = if (index in 1..3) resources.getIdentifier("theme_$index", "drawable", packageName) else 0
+        if (resId != 0) {
+            themeBg?.setImageResource(resId)
+            themeBg?.visibility = View.VISIBLE
+            supportFragmentManager.fragments.forEach { fragment ->
+                fragment.view?.let { makeBackgroundsTransparent(it, 0) }
+            }
+        } else {
+            themeBg?.visibility = View.GONE
+        }
+    }
+
+    /**
+     * Removes the plain color backgrounds of a fragment so the theme picture can be seen
+     */
+    private fun makeBackgroundsTransparent(view: View?, depth: Int) {
+        if (view == null || depth > 6) return
+        if (view.background is ColorDrawable) view.setBackgroundColor(Color.TRANSPARENT)
+        if (view is ViewGroup && view !is RecyclerView) {
+            for (i in 0 until view.childCount) makeBackgroundsTransparent(view.getChildAt(i), depth + 1)
         }
     }
 
