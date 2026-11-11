@@ -217,7 +217,14 @@ open class AudioPlayerContainerActivity : BaseActivity(), KeycodeListener, Sched
                     topMargin = insets.top
                     topInset = insets.top
                     val bottomNavigationView = findViewById<BottomNavigationView?>(R.id.navigation)
-                    bottomNavigationView?.setPadding(bottomNavigationView.paddingLeft, bottomNavigationView.paddingTop, bottomNavigationView.paddingRight, insets.bottom)
+                    // Floating pill bar: no bottom padding, lift the bar above the system buttons with a margin instead
+                    bottomNavigationView?.let { nav ->
+                        nav.setPadding(nav.paddingLeft, nav.paddingTop, nav.paddingRight, 0)
+                        (nav.layoutParams as? ViewGroup.MarginLayoutParams)?.let { navLp ->
+                            navLp.bottomMargin = insets.bottom + 12.dp
+                            nav.layoutParams = navLp
+                        }
+                    }
                     bottomInset = insets.bottom
                     if (::audioPlayer.isInitialized) audioPlayer.setBottomMargin()
                 }
@@ -255,8 +262,8 @@ open class AudioPlayerContainerActivity : BaseActivity(), KeycodeListener, Sched
     private fun setContentBottomPadding() {
         // insets from soft nav buttons
         var bottomMargin = if (this is MainActivity && isTablet()) 0 else bottomInset
-        // Bottom bar navigation
-        bottomMargin += if (this is MainActivity && !isTablet()) 58.dp else 0
+        // Bottom bar navigation (floating pill: bar height + bottom margin)
+        bottomMargin += if (this is MainActivity && !isTablet()) 70.dp else 0
         //mini player
         bottomMargin += if (::playerBehavior.isInitialized && playerBehavior.state != STATE_HIDDEN) 72.dp else 0 + 4.dp
         fragmentContainer.setPadding(fragmentContainer.paddingLeft, fragmentContainer.paddingTop, fragmentContainer.paddingRight, bottomMargin)
