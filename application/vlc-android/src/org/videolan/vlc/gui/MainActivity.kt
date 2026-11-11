@@ -24,12 +24,16 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
+import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
@@ -41,6 +45,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,6 +112,10 @@ class MainActivity : ContentActivity(),
     private var scanNeeded = false
     private lateinit var toolbarIcon: ImageView
 
+    // Sliding pill state
+    private var navPillSelectedId = -1
+    private var navPillTargetX = Float.NaN
+
     override fun getSnackAnchorView(overAudioPlayer:Boolean): View? {
         val view = super.getSnackAnchorView(overAudioPlayer)
         return if (view?.id == android.R.id.content && !isTablet()) {if(overAudioPlayer) findViewById(android.R.id.content) else findViewById(R.id.appbar)} else view
@@ -121,6 +130,7 @@ class MainActivity : ContentActivity(),
         initAudioPlayerContainerActivity()
         setupNavigation(savedInstanceState)
         setupNavAnimation()
+        setupNavPill()
 
         /* Set up the action bar */
         prepareActionBar()
@@ -265,7 +275,7 @@ class MainActivity : ContentActivity(),
      * Bounce animation on the bottom navigation items when they are tapped
      */
     private fun setupNavAnimation() {
-        val nav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.navigation) ?: return
+        val nav = findViewById<BottomNavigationView>(R.id.navigation) ?: return
         val navMenu = nav.menu
         for (i in 0 until navMenu.size()) {
             nav.findViewById<View>(navMenu.getItem(i).itemId)?.setOnTouchListener { v, event ->
@@ -280,7 +290,87 @@ class MainActivity : ContentActivity(),
         v.scaleX = 0.8f
         v.scaleY = 0.8f
         v.animate().scaleX(1f).scaleY(1f).setDuration(350)
-            .setInterpolator(android.view.animation.OvershootInterpolator(3.5f)).start()
+            .setInterpolator(OvershootInterpolator(3.5f)).start()
+    }
+
+    /**
+     * Sliding pill: the grey highlight behind the selected icon glides from one
+     * button to the next instead of jumping.
+     * The built-in Material indicator is turned off and replaced by our own view,
+     * which is placed under the icons but over the bar background.
+     */
+    private fun setupNavPill() {
+        val nav = findViewById<BottomNavigationView>(R.id.navigation) ?: return
+        nav.isItemActiveIndicatorEnabled = false
+
+        val density = resources.displayMetrics.density
+        val pillW = (64 * density).toInt()
+        val pillH = (48 * density).toInt()
+        val pill = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(pillW, pillH)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = pillH / 2f
+                setColor(ContextCompat.getColor(this@MainActivity, R.color.grey300))
+            }
+            visibility = View.INVISIBLE
+            isClickable = false
+            isFocusable = false
+        }
+        // index 0 = behind the menu view (icons), above the bar background
+        nav.addView(pill, 0)
+
+        nav.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                updateNavPill(nav, pill, pillW, pillH)
+                return true
+            }
+        })
+    }
+
+    private fun updateNavPill(nav: BottomNavigationView, pill: View, pillW: Int, pillH: Int) {
+        val id = nav.selectedItemId
+        val item = nav.findViewById<View>(id) ?: return
+        if (item.width == 0 || item.height == 0) return
+
+        // position of the item inside the nav bar
+        var x = 0f
+        var y = 0f
+        var cur: View = item
+        while (cur !== nav) {
+            x += cur.left + cur.translationX
+            y += cur.top + cur.translationY
+            cur = cur.parent as? View ?: break
+        }
+        val targetX = x + (item.width - pillW) / 2f
+        val targetY = y + (item.height - pillH) / 2f
+
+        when {
+            // first layout: place the pill without animation
+            navPillSelectedId == -1 -> {
+                pill.translationX = targetX
+                pill.translationY = targetY
+                pill.visibility = View.VISIBLE
+            }
+            // another tab selected: slide
+            id != navPillSelectedId -> {
+                pill.animate().cancel()
+                pill.translationY = targetY
+                pill.animate()
+                    .translationX(targetX)
+                    .setDuration(320)
+                    .setInterpolator(OvershootInterpolator(1.1f))
+                    .start()
+            }
+            // same tab but layout moved (rotation, resize): follow without animation
+            Math.abs(targetX - navPillTargetX) > 1f -> {
+                pill.animate().cancel()
+                pill.translationX = targetX
+                pill.translationY = targetY
+            }
+        }
+        navPillSelectedId = id
+        navPillTargetX = targetX
     }
 
     override fun onStart() {
