@@ -302,30 +302,52 @@ class MainActivity : ContentActivity(),
     }
 
     /**
-     * Red status bar that also works with edge-to-edge (Android 15+), where
-     * android:statusBarColor is ignored. A red view is drawn exactly over the
-     * status bar area; its height follows the real status bar inset
-     * (0 when the system is not in edge-to-edge mode, so nothing changes there).
+     * Status bar that matches the toolbar colour (red in light mode, dark in dark mode).
+     * On newer Android versions the status bar is transparent and android:statusBarColor
+     * is ignored, so a coloured view is drawn on top of the status bar area of the window.
+     * The colour is read from the theme (background_actionbar), so it follows light/dark mode.
      */
     private fun setupStatusBarScrim() {
-        val content = findViewById<ViewGroup>(android.R.id.content) ?: return
+        val decor = window.decorView as? ViewGroup ?: return
+
+        val tv = android.util.TypedValue()
+        val attrId = resources.getIdentifier("background_actionbar", "attr", packageName)
+        val color = if (attrId != 0 && theme.resolveAttribute(attrId, tv, true) &&
+            tv.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT &&
+            tv.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) {
+            tv.data
+        } else {
+            ContextCompat.getColor(this, R.color.wave_red)
+        }
+
+        fun statusBarHeight(): Int {
+            val inset = ViewCompat.getRootWindowInsets(decor)
+                ?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
+            if (inset > 0) return inset
+            val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+            return if (resId > 0) resources.getDimensionPixelSize(resId) else 0
+        }
+
         val scrim = View(this).apply {
-            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.wave_red))
+            setBackgroundColor(color)
             isClickable = false
             isFocusable = false
         }
-        content.addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.TOP))
-        ViewCompat.setOnApplyWindowInsetsListener(scrim) { v, insets ->
-            val top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            if (v.layoutParams.height != top) {
-                v.layoutParams.height = top
-                v.requestLayout()
+        decor.addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, statusBarHeight(), Gravity.TOP))
+
+        // light icons on a dark bar, dark icons on a light bar
+        val darkBar = androidx.core.graphics.ColorUtils.calculateLuminance(color) < 0.5
+        WindowInsetsControllerCompat(window, decor).isAppearanceLightStatusBars = !darkBar
+
+        decor.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val h = statusBarHeight()
+            if (scrim.layoutParams.height != h) {
+                scrim.layoutParams.height = h
+                scrim.requestLayout()
             }
-            insets
+            val visible = ViewCompat.getRootWindowInsets(decor)?.isVisible(WindowInsetsCompat.Type.statusBars()) ?: true
+            scrim.visibility = if (visible) View.VISIBLE else View.INVISIBLE
         }
-        ViewCompat.requestApplyInsets(scrim)
-        // white clock/battery icons on the red bar
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
     }
 
     /**
@@ -392,23 +414,46 @@ class MainActivity : ContentActivity(),
             }
             // another tab selected: slide
             id != navPillSelectedId -> {
-                pill.animate().cancel()
                 pill.translationY = targetY
-                pill.animate()
-                    .translationX(targetX)
-                    .setDuration(SLIDE_DURATION_MS)
-                    .setInterpolator(AccelerateDecelerateInterpolator())
-                    .start()
+                slidePill(pill, targetX)
             }
             // same tab but layout moved (rotation, resize): follow without animation
             Math.abs(targetX - navPillTargetX) > 1f -> {
-                pill.animate().cancel()
+                cancelPillSlide(pill)
                 pill.translationX = targetX
                 pill.translationY = targetY
             }
         }
         navPillSelectedId = id
         navPillTargetX = targetX
+    }
+
+    private var pillSlideRunnable: Runnable? = null
+
+    private fun cancelPillSlide(pill: View) {
+        pillSlideRunnable?.let { pill.removeCallbacks(it) }
+        pillSlideRunnable = null
+    }
+
+    /**
+     * Slides the pill to [toX] over SLIDE_DURATION_MS.
+     * It is driven frame by frame (not with the Android animator system), so it still
+     * runs when the phone has animations turned off (Developer options / battery saver).
+     */
+    private fun slidePill(pill: View, toX: Float) {
+        cancelPillSlide(pill)
+        val fromX = pill.translationX
+        val start = android.os.SystemClock.uptimeMillis()
+        val interpolator = AccelerateDecelerateInterpolator()
+        val step = object : Runnable {
+            override fun run() {
+                val t = ((android.os.SystemClock.uptimeMillis() - start).toFloat() / SLIDE_DURATION_MS).coerceIn(0f, 1f)
+                pill.translationX = fromX + (toX - fromX) * interpolator.getInterpolation(t)
+                if (t < 1f) pill.postOnAnimation(this) else pillSlideRunnable = null
+            }
+        }
+        pillSlideRunnable = step
+        pill.postOnAnimation(step)
     }
 
     override fun onStart() {
