@@ -867,7 +867,7 @@
 
     <style name="Widget.Wave.ActiveIndicator" parent="">
         <item name="android:width">64dp</item>
-        <item name="android:height">44dp</item>
+        <item name="android:height">48dp</item>
         <item name="android:color">@color/grey300</item>
         <item name="marginHorizontal">4dp</item>
         <item name="shapeAppearance">@style/ShapeAppearance.Wave.Full</item>
