@@ -26,7 +26,12 @@
         </item>
 
         <item name="colorPrimary">@color/orange800</item>
-        <item name="colorPrimaryDark">@color/orange700</item>
+        <!-- RED STATUS BAR (changed) -->
+        <item name="colorPrimaryDark">@color/wave_red</item>
+        <item name="android:statusBarColor">@color/wave_red</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
+        <!-- END RED STATUS BAR -->
         <item name="colorSecondary">@color/orange800</item>
         <item name="colorOnSecondary">@color/grey50</item>
         <item name="colorOnPrimary">@color/white</item>
