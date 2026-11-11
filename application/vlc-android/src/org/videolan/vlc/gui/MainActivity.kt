@@ -28,6 +28,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageView
 import androidx.activity.OnBackPressedCallback
@@ -119,6 +120,7 @@ class MainActivity : ContentActivity(),
         setContentView(R.layout.main)
         initAudioPlayerContainerActivity()
         setupNavigation(savedInstanceState)
+        setupNavAnimation()
 
         /* Set up the action bar */
         prepareActionBar()
@@ -257,6 +259,28 @@ class MainActivity : ContentActivity(),
             setHomeButtonEnabled(false)
             setDisplayShowTitleEnabled(false)
         }
+    }
+
+    /**
+     * Bounce animation on the bottom navigation items when they are tapped
+     */
+    private fun setupNavAnimation() {
+        val nav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.navigation) ?: return
+        val navMenu = nav.menu
+        for (i in 0 until navMenu.size()) {
+            nav.findViewById<View>(navMenu.getItem(i).itemId)?.setOnTouchListener { v, event ->
+                if (event.action == MotionEvent.ACTION_UP) bounceNavItem(v)
+                false
+            }
+        }
+    }
+
+    private fun bounceNavItem(v: View) {
+        v.animate().cancel()
+        v.scaleX = 0.8f
+        v.scaleY = 0.8f
+        v.animate().scaleX(1f).scaleY(1f).setDuration(350)
+            .setInterpolator(android.view.animation.OvershootInterpolator(3.5f)).start()
     }
 
     override fun onStart() {
