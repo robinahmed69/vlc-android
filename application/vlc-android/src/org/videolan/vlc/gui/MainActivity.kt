@@ -26,11 +26,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -41,6 +43,7 @@ import androidx.appcompat.view.ActionMode
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.Fragment
@@ -131,6 +134,7 @@ class MainActivity : ContentActivity(),
         setupNavigation(savedInstanceState)
         setupNavAnimation()
         setupNavPill()
+        setupStatusBarScrim()
 
         /* Set up the action bar */
         prepareActionBar()
@@ -291,6 +295,33 @@ class MainActivity : ContentActivity(),
         v.scaleY = 0.8f
         v.animate().scaleX(1f).scaleY(1f).setDuration(350)
             .setInterpolator(OvershootInterpolator(3.5f)).start()
+    }
+
+    /**
+     * Red status bar that also works with edge-to-edge (Android 15+), where
+     * android:statusBarColor is ignored. A red view is drawn exactly over the
+     * status bar area; its height follows the real status bar inset
+     * (0 when the system is not in edge-to-edge mode, so nothing changes there).
+     */
+    private fun setupStatusBarScrim() {
+        val content = findViewById<ViewGroup>(android.R.id.content) ?: return
+        val scrim = View(this).apply {
+            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.wave_red))
+            isClickable = false
+            isFocusable = false
+        }
+        content.addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.TOP))
+        ViewCompat.setOnApplyWindowInsetsListener(scrim) { v, insets ->
+            val top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            if (v.layoutParams.height != top) {
+                v.layoutParams.height = top
+                v.requestLayout()
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(scrim)
+        // white clock/battery icons on the red bar
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
     }
 
     /**
