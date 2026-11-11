@@ -34,6 +34,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -105,6 +106,9 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "VLC/MainActivity"
+
+// Sliding pill speed in milliseconds. Bigger number = slower slide (try 500 to 900).
+private const val SLIDE_DURATION_MS = 650L
 
 class MainActivity : ContentActivity(),
         INavigator by Navigator()
@@ -332,7 +336,10 @@ class MainActivity : ContentActivity(),
      */
     private fun setupNavPill() {
         val nav = findViewById<BottomNavigationView>(R.id.navigation) ?: return
+        // Turn off every other highlight source so only our sliding pill is visible
         nav.isItemActiveIndicatorEnabled = false
+        nav.itemActiveIndicatorColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+        nav.itemBackground = null
 
         val density = resources.displayMetrics.density
         val pillW = (64 * density).toInt()
@@ -389,8 +396,8 @@ class MainActivity : ContentActivity(),
                 pill.translationY = targetY
                 pill.animate()
                     .translationX(targetX)
-                    .setDuration(320)
-                    .setInterpolator(OvershootInterpolator(1.1f))
+                    .setDuration(SLIDE_DURATION_MS)
+                    .setInterpolator(AccelerateDecelerateInterpolator())
                     .start()
             }
             // same tab but layout moved (rotation, resize): follow without animation
