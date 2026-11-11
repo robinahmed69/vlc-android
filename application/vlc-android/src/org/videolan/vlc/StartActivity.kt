@@ -297,7 +297,10 @@ class StartActivity : FragmentActivity() {
 
     private fun startApplication(tv: Boolean, firstRun: Boolean, upgrade: Boolean, target: Int, removeDevices:Boolean = false) {
         val settings = Settings.getInstance(this@StartActivity)
-        val onboarding = !settings.getBoolean(if (tv) KEY_TV_ONBOARDING_DONE else ONBOARDING_DONE_KEY, false)
+        // The welcome (onboarding) screen is skipped on phones. It is only kept for Android TV.
+        val onboarding = tv && !settings.getBoolean(KEY_TV_ONBOARDING_DONE, false)
+        // Phones: no onboarding, so mark the first run as done here
+        if (!tv && firstRun) settings.putSingle(PREF_FIRST_RUN, BuildConfig.VLC_VERSION_CODE)
         // Start Medialibrary from background to workaround Dispatchers.Main causing ANR
         // cf https://github.com/Kotlin/kotlinx.coroutines/issues/878
         if (!onboarding || !firstRun) {
