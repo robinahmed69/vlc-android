@@ -77,6 +77,7 @@
             app:itemTextColor="@color/bottom_navigation_selector"
             app:itemActiveIndicatorStyle="@style/Widget.Wave.ActiveIndicator"
             app:labelVisibilityMode="unlabeled"
+            app:paddingBottomSystemWindowInsets="false"
             app:layout_behavior="org.videolan.vlc.gui.helpers.BottomNavigationBehavior"
             app:layout_insetEdge="bottom"
             app:menu="@menu/bottom_navigation" />
